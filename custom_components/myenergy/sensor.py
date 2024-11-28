@@ -276,12 +276,16 @@ class ComponentSensor(Entity):
 
                     self._price = price_info[0].replace('câ‚¬/kWh', '').replace('c€/kWh', '')
                     self._price = float(self._price.replace('.', '').replace(',', '.')) / 100
+                    
+                    # Only apply fixed charges if the fuel type is electricity
+                    if self._fuel_type == FuelType.ELECTRICITY:
+                        total_consumption = self._data._config.get("day_electricity_consumption", 0) + self._data._config.get("night_electricity_consumption", 0)
 
-                    total_consumption = self._data._config.get("day_electricity_consumption", 0) + self._data._config.get("night_electricity_consumption", 0)
+                        # If there is total consumption, calculate the fixed charge per kWh
+                        if total_consumption > 0:
+                            fixed_charge_per_kWh = self._electricity_fixed_charges / total_consumption
+                            self._price -= fixed_charge_per_kWh  # Subtract the proportional fixed charge per kWh from the price
 
-                    # If there is total consumption, calculate the fixed charge per kWh
-                    fixed_charge_per_kWh = self._electricity_fixed_charges / total_consumption
-                    self._price -= fixed_charge_per_kWh  # Subtract the proportional fixed charge per kWh from the price
 
                     self._kWhyear = price_info[1] if len(price_info) > 1 else "Unknown"
                     self._priceyear = price_info[2] if len(price_info) > 2 else "Unknown"
