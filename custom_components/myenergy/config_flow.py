@@ -35,6 +35,7 @@ def create_schema(entry, option=False):
         default_day_electricity_consumption = entry.data.get("day_electricity_consumption", 0)
         default_night_electricity_consumption = entry.data.get("night_electricity_consumption", 0)
         default_excl_night_electricity_consumption = entry.data.get("excl_night_electricity_consumption", 0)
+        default_electricity_fixed_charges = entry.data.get("electricity_fixed_charges", 0)
         default_solar_panels = entry.data.get("solar_panels", False)
         default_inverter_power = entry.data.get("inverter_power", 0)
         default_electricity_injection = entry.data.get("electricity_injection", 0)
@@ -54,6 +55,7 @@ def create_schema(entry, option=False):
         default_day_electricity_consumption = 0
         default_night_electricity_consumption = 0
         default_excl_night_electricity_consumption = 0
+        default_electricity_fixed_charges = 0
         default_solar_panels = False
         default_inverter_power = 0
         default_electricity_injection = 0
@@ -95,6 +97,9 @@ def create_schema(entry, option=False):
     ] = int
     data_schema[
         vol.Optional("excl_night_electricity_consumption", default=default_excl_night_electricity_consumption, description="excl_night_electricity_consumption")
+    ] = int
+    data_schema[
+        vol.Optional("electricity_fixed_charges", default=default_electricity_fixed_charges, description="electricity_fixed_charges")
     ] = int
     data_schema[
         vol.Required("solar_panels", default=default_solar_panels, description="solar_panels")
