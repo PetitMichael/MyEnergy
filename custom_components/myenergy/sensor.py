@@ -30,6 +30,7 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional("day_electricity_consumption"): cv.positive_int,
         vol.Optional("night_electricity_consumption"): cv.positive_int,
         vol.Optional("excl_night_electricity_consumption"): cv.positive_int,
+        vol.Optional("electricity_fixed_charges"): cv.positive_int,
         vol.Optional("electricity_injection"): cv.positive_int,
         vol.Optional("electricity_injection_night"): cv.positive_int,
         vol.Optional("gas_consumption"): cv.positive_int,
@@ -217,6 +218,9 @@ class ComponentSensor(Entity):
         self._name = f"{NAME} {self._postalcode}"
         self._add_details = data._add_details
 
+        self._electricity_fixed_charges = data._config.get("electricity_fixed_charges", 0)  # Default to 0 if not set
+
+
     @property
     def state(self):
         """Return the state of the sensor."""
@@ -237,24 +241,63 @@ class ComponentSensor(Entity):
             if self._fuel_type.fullnameNL in fueltype_name:
                 self._fueltype_detail = self._contract_type_details.get(fueltype_name)
                 _LOGGER.debug(f"fueltype_detail: {self._contract_type} - {fueltype_name} - {self._fueltype_detail}")
-                self._providerdetails = self._fueltype_detail[0]
-                self._url = self._providerdetails.get('url',"")
-                self._providername = self._providerdetails.get('provider',"")
-                self._contractname = self._providerdetails.get('name',"")
-
                 
+                # Ensure fueltype_detail is valid
+                if not self._fueltype_detail or len(self._fueltype_detail) == 0:
+                    _LOGGER.warning(f"No details found for fuel type: {self._fuel_type.fullnameNL} and provider: {self._data._config.get('electricity_provider')}")
+                    continue
+
+                self._providerdetails = self._fueltype_detail[0]
+
+                # Check if the provider matches
+                selected_provider = self._data._config.get("electricity_provider", "").strip().lower()
+                current_provider = self._providerdetails.get('provider', "").strip().lower()
+
+                _LOGGER.debug(f"Checking provider: {current_provider}, looking for: {selected_provider}")
+                if current_provider != selected_provider:
+                    _LOGGER.debug(f"Skipping provider: {current_provider}, expected: {selected_provider}")
+                    continue
+
+                # Populate sensor attributes
+                self._url = self._providerdetails.get('url', "")
+                self._providername = self._providerdetails.get('provider', "")
+                self._contractname = self._providerdetails.get('name', "")
+                
+                # Ensure correct assignment of attributes
                 self._energycost = self._providerdetails.get(headings[0],"")
                 self._netrate = self._providerdetails.get(headings[1],"")
                 self._promo = self._providerdetails.get(headings[2],"")
-                price_info = self._providerdetails.get('Jaarlijkse kostprijs',[])
-                if len(price_info) > 0:
-                    self._price = price_info[0]
-                    self._price = self._price.replace('câ‚¬/kWh','').replace('c€/kWh','')
-                    self._price = float(self._price.replace('.','').replace(',', '.'))/100
-                    if len(price_info) >= 2:
-                        self._kWhyear = price_info[1]
-                        self._priceyear = price_info[2]
-                        self._priceyear = self._priceyear.replace('câ‚¬/kWh','').replace('c€/kWh','')
+
+                
+                # Parse price details safely
+                price_info = self._providerdetails.get('Jaarlijkse kostprijs', [])
+                if price_info:
+                    # Get total consumption (day + night)
+
+                    self._price = price_info[0].replace('câ‚¬/kWh', '').replace('c€/kWh', '')
+                    self._price = float(self._price.replace('.', '').replace(',', '.')) / 100
+
+                    total_consumption = self._data._config.get("day_electricity_consumption", 0) + self._data._config.get("night_electricity_consumption", 0)
+
+                    # If there is total consumption, calculate the fixed charge per kWh
+                    fixed_charge_per_kWh = self._electricity_fixed_charges / total_consumption
+                    self._price -= fixed_charge_per_kWh  # Subtract the proportional fixed charge per kWh from the price
+
+                    self._kWhyear = price_info[1] if len(price_info) > 1 else "Unknown"
+                    self._priceyear = price_info[2] if len(price_info) > 2 else "Unknown"
+
+                else:
+                    self._price = "Unknown"
+                    self._kWhyear = "Unknown"
+                    self._priceyear = "Unknown"
+
+                # Log the final provider details and attribute values for debugging
+                _LOGGER.debug(f"Energy cost: {self._energycost}")
+                _LOGGER.debug(f"Net rate: {self._netrate}")
+                _LOGGER.debug(f"Promo: {self._promo}")
+                _LOGGER.debug(f"Price: {self._price}")
+                _LOGGER.debug(f"KWh per year: {self._kWhyear}")
+                _LOGGER.debug(f"Price per year: {self._priceyear}")
 
 
     async def async_will_remove_from_hass(self):
@@ -293,6 +336,7 @@ class ComponentSensor(Entity):
             "provider name": self._providername,
             "contract name": self._contractname,
             "energy cost": self._energycost,
+            "electricity fixed charges": self._electricity_fixed_charges,  # Add fixed charges here
             "netrate": self._netrate,
             "promo": self._promo,
             "total price per year": self._priceyear,
