@@ -105,17 +105,29 @@ class ComponentSession(object):
 
         result = {}
         for type_comp in types_comp:
+            # Generate the URL for the request
             myenergy_url = f"https://www.mijnenergie.be/energie-vergelijken-3-resultaten-?Form=fe&e={type_comp}&d={electricity_digital_counter_n}&c=particulier&cp={postalcode}&i2={elec_level}----{day_electricity_consumption}-{night_electricity_consumption}-{excl_night_electricity_consumption}-1----{gas_consumption}----1-{directdebit_invoice_n}%7C{email_invoice_n}%7C{online_support_n}%7C1-{electricity_injection}%7C{electricity_injection_night}%7C{solar_panels_n}%7C%7C0%21{contract_type.code}%21A%21n%7C0%21{contract_type.code}%21A%7C{combine_elec_and_gas_n}%7C{inverter_power}%7C%7C%7C%7C%7C%21%7C%7C{inverter_power}%7C%7C{electric_car_n}-{electricity_provider_n}%7C{gas_provider_n}-0"
             
-            _LOGGER.debug(f"myenergy_url: {myenergy_url}")
-            response = self.s.get(myenergy_url,timeout=30,allow_redirects=True)
+            # Log the generated URL (for debugging)
+            _LOGGER.debug(f"Generated myenergy_url: {myenergy_url}")
+
+            try:
+                # Make the GET request
+                response = self.s.get(myenergy_url, timeout=30, allow_redirects=True)
+                
+                # Raise an error for invalid responses (non-2xx HTTP responses)
+                response.raise_for_status()  
+            except requests.exceptions.RequestException as e:
+                # Log any error that occurs during the request
+                _LOGGER.error(f"Error fetching data from MijnEnergie: {e}")
+                return {}  # Return an empty dictionary if there’s an error
+
+            # Assert the status code is 200 (OK), if not, it will raise an exception
             assert response.status_code == 200
-            
-            _LOGGER.debug("get result status code: " + str(response.status_code))
-            # _LOGGER.debug("get result response: " + str(response.text))
+            _LOGGER.debug(f"Received response with status code: {response.status_code}")
+
+            # Parse the HTML content
             soup = BeautifulSoup(response.text, 'html.parser')
-
-
             
             # sections = soup.find_all('div', class_='container-fluid container-fluid-custom')
             # for section in sections:
@@ -158,6 +170,11 @@ class ComponentSession(object):
                     provider_name = img_element['alt']
                     provider_name = provider_name.replace('Logo ','').title()
 
+                    # Skip if this provider is not the selected one
+                    _LOGGER.debug(f"Checking provider: {provider_name.strip()} against selected: {electricity_provider.strip()}")
+                    if provider_name.strip().lower() != electricity_provider.strip().lower():
+                        _LOGGER.debug(f"Skipping provider: {provider_name}, looking for: {electricity_provider}")
+                        continue
 
                     # Find all table rows and extract the data
                     table_rows = providerdetail.find_all('tr')
